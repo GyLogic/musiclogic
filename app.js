@@ -7,8 +7,11 @@
 // CONFIG & API ENDPOINTS (Public Stream Extractor)
 // ==========================================
 // Kita menggunakan Piped API / Invidious instance publik untuk mencari & mengekstrak audio YouTube tanpa limitasi API Key resmi.
-const SEARCH_API_URL = "https://pipedapi.kavin.rocks/search?q=";
-const STREAM_API_URL = "https://pipedapi.kavin.rocks/streams/";
+// ==========================================
+// CONFIG & API ENDPOINTS (Ganti dengan Server Baru yang Aktif)
+// ==========================================
+const SEARCH_API_URL = "https://pipedapi.colbybros.dedyn.io/search?q=";
+const STREAM_API_URL = "https://pipedapi.colbybros.dedyn.io/streams/";
 
 // ==========================================
 // SELEKTOR ELEMEN DOM
