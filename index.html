@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sputify - No Ads Player</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-[#121212] text-white font-sans h-screen overflow-hidden flex flex-col">
+
+    <div class="flex flex-1 h-[calc(100vh-90px)] overflow-hidden p-2 gap-2">
+        
+        <div class="w-64 bg-[#000000] rounded-lg p-5 flex flex-col gap-6 select-none shrink-0">
+            <div class="flex items-center gap-2 text-xl font-bold tracking-wider px-2">
+                <i class="fab fa-spotify text-green-500 text-3xl"></i>
+                <span>Sputify</span>
+            </div>
+            
+            <nav class="flex flex-col gap-4 text-gray-400 font-semibold px-2">
+                <a href="#" class="hover:text-white flex items-center gap-4 transition">
+                    <i class="fas fa-home text-xl"></i> Home
+                </a>
+                <a href="#" class="hover:text-white flex items-center gap-4 transition">
+                    <i class="fas fa-search text-xl"></i> Search
+                </a>
+            </nav>
+
+            <div class="flex-1 bg-[#121212] rounded-lg p-4 mt-2 flex flex-col gap-4 overflow-y-auto">
+                <div class="flex items-center justify-between text-gray-400 font-semibold">
+                    <span class="flex items-center gap-2">
+                        <i class="fas fa-layer-group text-xl"></i> Your Library
+                    </span>
+                    <button class="hover:text-white transition"><i class="fas fa-plus"></i></button>
+                </div>
+                <div class="text-sm text-gray-400 py-2">Belum ada playlist dibuat.</div>
+            </div>
+        </div>
+
+        <div class="flex-1 bg-gradient-to-b from-[#1e1e1e] to-[#121212] rounded-lg p-6 overflow-y-auto flex flex-col">
+            
+            <div class="flex items-center justify-between mb-6 shrink-0">
+                <div class="relative w-96">
+                    <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
+                        <i class="fas fa-search"></i>
+                    </span>
+                    <input type="text" id="search-input" placeholder="Apa yang ingin kamu dengarkan?" 
+                        class="w-full bg-[#242424] text-sm text-white pl-10 pr-4 py-3 rounded-full focus:outline-none focus:ring-2 focus:ring-white placeholder-gray-400 transition">
+                </div>
+                <div class="text-sm font-semibold text-gray-300 bg-black/40 px-4 py-2 rounded-full select-none">
+                    Premium User (Free)
+                </div>
+            </div>
+
+            <div class="flex-1">
+                <h2 id="section-title" class="text-2xl font-bold mb-4">Lagu Populer</h2>
+                <div id="songs-container" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                    </div>
+            </div>
+
+        </div>
+    </div>
+
+    <footer class="h-[90px] bg-black border-t border-[#282828] px-4 flex items-center justify-between select-none z-10 shrink-0">
+        
+        <div class="flex items-center gap-4 w-1/4 min-w-[180px]">
+            <img id="current-cover" src="https://via.placeholder.com/56" class="w-14 h-14 object-cover rounded-md bg-[#242424] shrink-0" alt="">
+            <div class="overflow-hidden">
+                <div id="current-title" class="text-sm font-semibold truncate">Belum Memutar Lagu</div>
+                <div id="current-artist" class="text-xs text-gray-400 truncate">-</div>
+            </div>
+        </div>
+
+        <div class="flex flex-col items-center gap-2 w-2/4 max-w-[600px]">
+            <div class="flex items-center gap-6 text-gray-400 text-lg">
+                <button class="hover:text-white transition text-sm"><i class="fas fa-random"></i></button>
+                <button id="prev-btn" class="hover:text-white transition text-xl"><i class="fas fa-step-backward"></i></button>
+                <button id="play-btn" class="bg-white text-black text-xl w-8 h-8 rounded-full flex items-center justify-center hover:scale-105 transition shadow-md">
+                    <i class="fas fa-play pl-0.5"></i>
+                </button>
+                <button id="next-btn" class="hover:text-white transition text-xl"><i class="fas fa-step-forward"></i></button>
+                <button class="hover:text-white transition text-sm"><i class="fas fa-redo"></i></button>
+            </div>
+            
+            <div class="flex items-center gap-2 w-full text-xs text-gray-400">
+                <span id="current-time">0:00</span>
+                <div class="flex-1 h-1 bg-[#4d4d4d] rounded-full cursor-pointer relative group">
+                    <div id="progress-bar" class="h-full bg-white group-hover:bg-green-500 rounded-full w-0 transition-all duration-100"></div>
+                </div>
+                <span id="total-duration">0:00</span>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3 w-1/4 justify-end text-gray-400 min-w-[120px]">
+            <button class="hover:text-white transition"><i class="fas fa-volume-up"></i></button>
+            <div class="w-24 h-1 bg-[#4d4d4d] rounded-full cursor-pointer relative group">
+                <div id="volume-bar" class="h-full bg-white group-hover:bg-green-500 rounded-full w-full"></div>
+            </div>
+        </div>
+
+    </footer>
+
+    <audio id="audio-player" class="hidden"></audio>
+
+    <script src="app.js"></script>
+</body>
+</html>
