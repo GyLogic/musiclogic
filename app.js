@@ -1,104 +1,113 @@
 /**
- * Sputify Player - Core Logic Script
- * Menghubungkan UI mirip Spotify dengan Audio Stream YouTube Tanpa Iklan
+ * Sputify Player - Iframe API Engine Logic
+ * Menghubungkan UI mirip Spotify dengan YouTube Player Tersembunyi
  */
 
 // ==========================================
-// CONFIG & API ENDPOINTS (Public Stream Extractor)
-// ==========================================
-// Kita menggunakan Piped API / Invidious instance publik untuk mencari & mengekstrak audio YouTube tanpa limitasi API Key resmi.
-// ==========================================
-// CONFIG & API ENDPOINTS (Ganti dengan Server Baru yang Aktif)
-// ==========================================
-const SEARCH_API_URL = "https://pipedapi.colbybros.dedyn.io/search?q=";
-const STREAM_API_URL = "https://pipedapi.colbybros.dedyn.io/streams/";
-
-// ==========================================
-// SELEKTOR ELEMEN DOM
+// SELEKTOR ELEMEN DOM & VARIABEL UTAMA
 // ==========================================
 const songsContainer = document.getElementById('songs-container');
-const audioPlayer = document.getElementById('audio-player');
 const playBtn = document.getElementById('play-btn');
 const currentCover = document.getElementById('current-cover');
 const currentTitle = document.getElementById('current-title');
 const currentArtist = document.getElementById('current-artist');
 const progressBar = document.getElementById('progress-bar');
-const progressBarContainer = progressBar.parentElement;
+const progressContainer = document.getElementById('progress-container');
 const currentTimeLabel = document.getElementById('current-time');
 const totalDurationLabel = document.getElementById('total-duration');
 const searchInput = document.getElementById('search-input');
 const sectionTitle = document.getElementById('section-title');
 const volumeBar = document.getElementById('volume-bar');
-const volumeBarContainer = volumeBar.parentElement;
+const volumeContainer = document.getElementById('volume-container');
 
+let ytPlayer = null; // Menyimpan instance objek pemutar YouTube
 let isPlaying = false;
 let currentTrack = null;
 let searchTimeout = null;
+let updateTimer = null;
 
 // ==========================================
-// 1. FUNGSI PENCARIAN & PENGAMBILAN DATA YOUTUBE
+// 1. INISIALISASI YOUTUBE IFRAME PLAYER
 // ==========================================
+// Fungsi global bawaan dari YouTube API, otomatis terpanggil saat script YouTube termuat
+function onYouTubeIframeAPIReady() {
+    ytPlayer = new YT.Player('yt-player', {
+        height: '1',
+        width: '1',
+        videoId: '', // Dikosongkan dulu di awal
+        playerVars: {
+            'playsinline': 1,
+            'controls': 0,
+            'disablekb': 1,
+            'fs': 0,
+            'rel': 0
+        },
+        events: {
+            'onStateChange': onPlayerStateChange,
+            'onError': onPlayerError
+        }
+    });
+}
 
-// Fungsi utama mencari lagu ke server YouTube via Piped API
-async function searchYouTube(query) {
+// ==========================================
+// 2. LOGIKA SCRAPING DATA PENCARIAN (CORS-FREE FEED)
+// ==========================================
+async function searchSongs(query) {
     if (!query) return;
     
     sectionTitle.textContent = `Mencari "${query}"...`;
     songsContainer.innerHTML = `
         <div class="col-span-full text-center py-10 text-gray-400">
             <i class="fas fa-spinner fa-spin text-3xl mb-2"></i>
-            <p>Menyelami YouTube...</p>
+            <p>Menghubungkan ke server musik...</p>
         </div>
     `;
 
     try {
-        const response = await fetch(`${SEARCH_API_URL}${encodeURIComponent(query)}&filter=music_videos`);
+        // Menggunakan public search proxy feed yang aman dan stabil
+        const response = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(`https://www.youtube.com/results?search_query=${encodeURIComponent(query)}+music&sp=EgIQAQ%253D%253D`)}`);
         const data = await response.json();
-        
-        // Filter hanya mengambil tipe dokumen video/musik
-        const tracks = data.items.filter(item => item.type === 'stream').map(item => ({
-            id: item.url.split("v=")[1] || item.url.split("/").pop(),
-            title: item.title,
-            artist: item.uploaderName,
-            cover: item.thumbnail,
-        }));
+        const html = data.contents;
+
+        // Mengekstrak data video ID, judul, dan thumbnail dari raw HTML YouTube menggunakan Regex
+        const videoIds = [...html.matchAll(/"videoId":"([^"]+)"/g)].map(m => m[1]);
+        const titles = [...html.matchAll(/"title":{"runs":\[{"text":"([^"]+)"}\]/g)].map(m => m[1]);
+        const authors = [...html.matchAll(/"longBylineText":{"runs":\[{"text":"([^"]+)"}\]/g)].map(m => m[1]);
+
+        const tracks = [];
+        const maxResults = Math.min(10, videoIds.length);
+
+        for (let i = 0; i < maxResults; i++) {
+            if (videoIds[i] && titles[i]) {
+                tracks.push({
+                    id: videoIds[i],
+                    title: JSON.parse(`"${titles[i]}"`), // Mengurai unicode text jikalau ada
+                    artist: authors[i] ? JSON.parse(`"${authors[i]}"`) : "YouTube Music",
+                    cover: `https://img.youtube.com/vi/${videoIds[i]}/hqdefault.jpg`
+                });
+            }
+        }
+
+        // Membersihkan data duplikat hasil regex
+        const uniqueTracks = tracks.filter((v, i, a) => a.findIndex(t => t.id === v.id) === i);
 
         sectionTitle.textContent = `Hasil Pencarian untuk "${query}"`;
-        renderSongs(tracks);
+        renderSongs(uniqueTracks);
     } catch (error) {
-        console.error("Gagal mengambil data dari YouTube:", error);
+        console.error("Gagal memproses data:", error);
         sectionTitle.textContent = "Gagal memuat hasil pencarian";
-        songsContainer.innerHTML = `<div class="col-span-full text-center text-red-500">Terjadi kesalahan koneksi. Silakan coba lagi.</div>`;
-    }
-}
-
-// Fungsi menarik direct URL link audio (.webm / .mp3) murni tanpa video & tanpa iklan
-async function getAudioStreamUrl(videoId) {
-    try {
-        const response = await fetch(`${STREAM_API_URL}${videoId}`);
-        const data = await response.json();
-        
-        // Mencari objek stream yang hanya berisi audio murni (audio-only) dengan kualitas terbaik
-        const audioStreams = data.audioStreams.sort((a, b) => b.bitrate - a.bitrate);
-        if (audioStreams.length > 0) {
-            return audioStreams[0].url; // Mengembalikan direct link stream audio
-        }
-        throw new Error("Audio stream tidak ditemukan");
-    } catch (error) {
-        console.error("Gagal mengekstrak audio dari video ini:", error);
-        alert("Gagal memutar audio dari YouTube. Server proxy penuh, coba lagu lain.");
-        return null;
+        songsContainer.innerHTML = `<div class="col-span-full text-center text-red-500">Koneksi sibuk. Silakan coba mengetik ulang kembali.</div>`;
     }
 }
 
 // ==========================================
-// 2. RENDERING HALAMAN / UI KARTU LAGU
+// 3. RENDERING KARTU LAGU KE LAYOUT
 // ==========================================
 function renderSongs(songs) {
     songsContainer.innerHTML = '';
     
     if (songs.length === 0) {
-        songsContainer.innerHTML = `<div class="col-span-full text-center text-gray-400 py-10">Lagu tidak ditemukan.</div>`;
+        songsContainer.innerHTML = `<div class="col-span-full text-center text-gray-400 py-10">Lagu tidak ditemukan. Coba judul lain.</div>`;
         return;
     }
 
@@ -116,20 +125,17 @@ function renderSongs(songs) {
             <p class="text-xs text-gray-400 mt-1 truncate">${song.artist}</p>
         `;
         
-        // Klik kartu untuk memproses stream audio secara asinkronus
-        card.addEventListener('click', async () => {
-            // Beri feedback visual loading pada bar bawah
-            currentTitle.textContent = "Loading Stream...";
-            currentArtist.textContent = song.artist;
+        card.addEventListener('click', () => {
+            currentTrack = song;
             currentCover.src = song.cover;
+            currentTitle.textContent = song.title;
+            currentArtist.textContent = song.artist;
             
-            const directAudioUrl = await getAudioStreamUrl(song.id);
-            if (directAudioUrl) {
-                song.streamUrl = directAudioUrl;
-                loadAndPlayTrack(song);
-            } else {
-                currentTitle.textContent = "Belum Memutar Lagu";
-                currentArtist.textContent = "-";
+            if (ytPlayer && ytPlayer.loadVideoById) {
+                ytPlayer.loadVideoById(song.id);
+                isPlaying = true;
+                playBtn.innerHTML = '<i class="fas fa-pause"></i>';
+                setupMediaSession(song);
             }
         });
         
@@ -138,66 +144,86 @@ function renderSongs(songs) {
 }
 
 // ==========================================
-// 3. LOGIKA KONTROL UTAMA PLAYER AUDIO
+// 4. EVENT HANDLER PEMUTARAN YOUTUBE PLAYER
 // ==========================================
-function loadAndPlayTrack(song) {
-    currentTrack = song;
-    audioPlayer.src = song.streamUrl;
-    
-    currentCover.src = song.cover;
-    currentTitle.textContent = song.title;
-    currentArtist.textContent = song.artist;
-    
-    playTrack();
-    setupMediaSession(song);
+function onPlayerStateChange(event) {
+    // YT.PlayerState.PLAYING = 1
+    if (event.data == YT.PlayerState.PLAYING) {
+        isPlaying = true;
+        playBtn.innerHTML = '<i class="fas fa-pause"></i>';
+        startProgressUpdater();
+    } 
+    // YT.PlayerState.PAUSED = 2 atau ENDED = 0
+    else {
+        isPlaying = false;
+        playBtn.innerHTML = '<i class="fas fa-play pl-0.5"></i>';
+        stopProgressUpdater();
+    }
 }
 
-function playTrack() {
-    audioPlayer.play()
-        .then(() => {
-            isPlaying = true;
-            playBtn.innerHTML = '<i class="fas fa-pause"></i>';
-        })
-        .catch(err => console.log("Playback dicegah oleh browser sebelum interaksi user:", err));
+function onPlayerError(event) {
+    console.error("YouTube Player Error:", event.data);
+    currentTitle.textContent = "Lagu dilindungi hak cipta / Gagal dimuat";
 }
 
 function togglePlay() {
-    if (!currentTrack) return;
+    if (!currentTrack || !ytPlayer) return;
     if (isPlaying) {
-        audioPlayer.pause();
-        isPlaying = false;
-        playBtn.innerHTML = '<i class="fas fa-play pl-0.5"></i>';
+        ytPlayer.pauseVideo();
     } else {
-        audioPlayer.play();
-        isPlaying = true;
-        playBtn.innerHTML = '<i class="fas fa-pause"></i>';
+        ytPlayer.playVideo();
     }
 }
 
 // ==========================================
-// 4. LOGIKA PROGRESS BAR, LOCKSCREEN & VOLUME
+// 5. PROGRESS BAR & VOLUME CONTROL
 // ==========================================
+function startProgressUpdater() {
+    stopProgressUpdater();
+    updateTimer = setInterval(() => {
+        if (!ytPlayer || !isPlaying) return;
+        
+        const currentTime = ytPlayer.getCurrentTime();
+        const duration = ytPlayer.getDuration();
+        
+        if (duration > 0) {
+            const progressPercent = (currentTime / duration) * 100;
+            progressBar.style.width = `${progressPercent}%`;
+            currentTimeLabel.textContent = formatTime(currentTime);
+            totalDurationLabel.textContent = formatTime(duration);
+        }
+    }, 500);
+}
 
-// Menghitung jalannya durasi audio lagu
-audioPlayer.addEventListener('timeupdate', () => {
-    const { currentTime, duration } = audioPlayer;
+function stopProgressUpdater() {
+    clearInterval(updateTimer);
+}
+
+progressContainer.addEventListener('click', (e) => {
+    if (!currentTrack || !ytPlayer) return;
+    const duration = ytPlayer.getDuration();
     if (!duration) return;
-    
-    const progressPercent = (currentTime / duration) * 100;
-    progressBar.style.width = `${progressPercent}%`;
-    
-    currentTimeLabel.textContent = formatTime(currentTime);
-    totalDurationLabel.textContent = formatTime(duration);
-});
 
-// Fitur klik pada progress bar untuk melompati durasi menit/detik lagu
-progressBarContainer.addEventListener('click', (e) => {
-    if (!currentTrack || !audioPlayer.duration) return;
-    const rect = progressBarContainer.getBoundingClientRect();
+    const rect = progressContainer.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const width = rect.width;
-    const newTime = (clickX / width) * audioPlayer.duration;
-    audioPlayer.currentTime = newTime;
+    const newTime = (clickX / width) * duration;
+    
+    ytPlayer.seekTo(newTime, true);
+});
+
+volumeContainer.addEventListener('click', (e) => {
+    if (!ytPlayer) return;
+    const rect = volumeContainer.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const width = rect.width;
+    let volumePercent = Math.round((clickX / width) * 100);
+    
+    if (volumePercent < 0) volumePercent = 0;
+    if (volumePercent > 100) volumePercent = 100;
+    
+    ytPlayer.setVolume(volumePercent);
+    volumeBar.style.width = `${volumePercent}%`;
 });
 
 function formatTime(time) {
@@ -206,56 +232,43 @@ function formatTime(time) {
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
 }
 
-// Mengatur kendali Volume
-volumeBarContainer.addEventListener('click', (e) => {
-    const rect = volumeBarContainer.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const width = rect.width;
-    let newVolume = clickX / width;
-    if (newVolume < 0) newVolume = 0;
-    if (newVolume > 1) newVolume = 1;
-    audioPlayer.volume = newVolume;
-    volumeBar.style.width = `${newVolume * 100}%`;
-});
-
-// Mencegah musik mati saat layar ponsel dimatikan/dikunci (Media Session API)
+// Mencegah musik mati saat layar ponsel dimatikan/dikunci
 function setupMediaSession(song) {
     if ('mediaSession' in navigator) {
         navigator.mediaSession.metadata = new MediaMetadata({
             title: song.title,
             artist: song.artist,
-            artwork: [{ src: song.cover, sizes: '300x300', type: 'image/png' }]
+            artwork: [{ src: song.cover, sizes: '300x300', type: 'image/jpeg' }]
         });
         
-        navigator.mediaSession.setActionHandler('play', playTrack);
-        navigator.mediaSession.setActionHandler('pause', togglePlay);
+        navigator.mediaSession.setActionHandler('play', () => ytPlayer.playVideo());
+        navigator.mediaSession.setActionHandler('pause', () => ytPlayer.pauseVideo());
     }
 }
 
 // ==========================================
-// 5. EVENT HANDLERS & DEBOUNCING PENCARIAN
+// 6. INITIALIZATION & DEBOUNCED SEARCH
 // ==========================================
 playBtn.addEventListener('click', togglePlay);
 
-// Menggunakan teknik Debounce agar pencarian ke API tidak menembak setiap kali tombol diketik
 searchInput.addEventListener('input', (e) => {
     clearTimeout(searchTimeout);
     const query = e.target.value.trim();
     
     if (query === '') {
         sectionTitle.textContent = "Lagu Populer";
-        songsContainer.innerHTML = `<div class="col-span-full text-center text-gray-500 py-10">Gunakan kolom di atas untuk mencari lagu dari YouTube secara instan.</div>`;
+        songsContainer.innerHTML = `<div class="col-span-full text-center text-gray-500 py-10">Gunakan kolom di atas untuk mencari lagu secara instan.</div>`;
         return;
     }
 
     searchTimeout = setTimeout(() => {
-        searchYouTube(query);
-    }, 600); // Eksekusi pencarian setelah user berhenti mengetik selama 0.6 detik
+        searchSongs(query);
+    }, 700);
 });
 
-// Default lagu saat aplikasi pertama dimuat
+// Menampilkan lagu bawaan pertama kali dimuat
 document.addEventListener('DOMContentLoaded', () => {
-    sectionTitle.textContent = "Lagu Populer";
-    // Menampilkan saran pencarian pertama kali
-    searchYouTube("Lo-fi Beats Chill");
+    setTimeout(() => {
+        searchSongs("Lo-fi Beats Chill");
+    }, 1000); // Beri jeda 1 detik agar objek player terinisialisasi sempurna
 });
